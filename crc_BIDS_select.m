@@ -9,18 +9,18 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt)
 %
 % INPUT
 % ffilt : filtering details, expressed as a structure
-%     .rootDir:     root directory path of BIDS dataset (path)
-%     .SubjType:    type of subject to consider [def. '']
+%     .rootDir:     root directory path of BIDS dataset [def. current dir]
+%     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
 %     .SessInd:     index/name of session to consider [def. '']
 %     .TaskLab:     label of task to consider [def. '']
 %     .ImgMod:      name of imaging modality [def. 'bold']
 %     .DatMod:      name of structured data field to return [def. 'events']
-%     .ProcLec:     level of the data processing ('raw', 'derivative' or 
+%     .ProcLec:     level of the data processing ('raw', 'derivative' or
 %                   'results') [def. 'raw']
 %     .FnPrefx:     required prefix to filename [def. '']
 %     .RegExp:      regular expression for file selection [def. '']
-% 
+%
 % All key-names should follow BIDS nomenclature.
 %
 % OUTPUT
@@ -28,6 +28,16 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt)
 % n_out  : number of such filenames returned
 % or
 % st_out : (array of) structure(s) with requested data
+%
+% Notes regardign the filtering options
+% * SubjType:
+%   - if omited, then all types are considered
+%   - if only one type, pass it as a char
+%   - for multiple types, use a celle array of chars.
+%     For example ffilt.SubjType = {{'ctl','pat'}} for 'ctl' and 'pat'.
+% * SubjInd:
+%   - if omited or set to 'all' (or another char), then no filtering
+%   - if (array of) number(s), then keeping only those matching
 %
 %__________________________________________________________________________
 %
@@ -43,24 +53,29 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt)
 
 %% 1. Initializing and some checks
 % Ensures the BIDS complete structure is extracted only once
-persistent BIDS 
+persistent BIDS
 
 % Defaults for the filter
+if nargin<1, ffilt = struct; end
 ffilt_def = struct( ...
-    rootDir, [], ...    % root directory path of BIDS dataset
-    SubjType, [], ...   % type of subject to consider
-    SubjInd, 'all', ... % index of subjects to consider
-    SessInd, '', ...    % index of session to consider
-    TaskLab, '', ...    % label of task to consider
-    ImgMod, {{'bold'}}, ... % imaging modality
-    DatMod, '', ...     % name of structured data field to return
-    ProcLec, 'raw', ... % origin of the data (raw, derivative or results)
-    FnPrefx, '', ...    % required prefix to filename
-    RegExp, '' ...      % regular expression for file selection
+    'rootDir', pwd, ...   % root directory path of BIDS dataset
+    'SubjType', {{''}}, ...   % type of subject to consider
+    'SubjInd', 'all', ... % index of subjects to consider
+    'SessInd', '', ...    % index of session to consider
+    'TaskLab', '', ...    % label of task to consider
+    'ImgMod', {{'bold'}}, ... % imaging modality
+    'DatMod', '', ...     % name of structured data field to return
+    'ProcLec', 'raw', ... % origin of the data (raw, derivative or results)
+    'FnPrefx', '', ...    % required prefix to filename
+    'RegExp', '' ...      % regular expression for file selection
     );
 
 % Filling in defaults
 ffilt = crc_check_flag(ffilt_def,ffilt);
+
+% Note:
+% spm_BIDS does check for the existence and validity of the BIDS-directory
+% provided, no need to redo this check here?
 
 % Loading in the whole BIDS stucture for the 1st call
 if isempty(BIDS)
@@ -69,6 +84,74 @@ end
 
 %% #. Extracting the requested filenames/data
 fn_out = '';
+nrSubj = numel(BIDS.subjects);
+
+% Check number of subject's dirs match participants info
+if nrSubj~=numel(BIDS.participants.participant_id)
+    error('Inconsistent number of subjects in BIDS directory.');
+end
+
+% Extracting the subjects' type and index from the original their label
+[pTyp,pInd] = extract_particpant_label_ind(BIDS.participants.participant_id);
+
+% Find the list of subjects based on SubjType and SubjInd
+l_Subj = 1:nrSubj;
+if ~isempty(ffilt.SubjType)
+    if isempty(ffilt.SubjType) || strcmp(ffilt.SubjType,'all') || ...
+            isempty(ffilt.SubjType{1}) || strcmp(ffilt.SubjType{''},'all')
+        % No filtering needed
+    else
+        % reduce list to those with matching (each) SubjType
+        fSubjType = ffilt.SubjType;
+        if ischar(fSubjType), fSubjType = cellstr(fSubjType); end
+        to_keep = [];
+        for ii=1:numel(fSubjType)
+            to_keep = [to_keep ; find(strcmp(fSubjType{ii},pTyp))];
+        end
+        l_Subj = l_Subj(to_keep);
+    end
+    
+end
+
+if ischar(ffilt.SubjInd) % Not reducing list of chars just letting know
+    if ~strcmp(ffilt.SubjInd,'all') % that 'all' should be used.
+        warning('Wrong subject index, using ''all''.');
+    end
+elseif ~any(isnan(pInd)) % no NaN's -> apply index filter
+    tmp = intersect(ffilt.SubjInd,pInd(l_Subj));
+    to_keep = [];
+    for ii = tmp'
+        to_keep = [to_keep ; find(pInd(l_Subj)==ii)]; %#ok<*AGROW>
+    end
+    l_Subj = l_Subj(to_keep);
+end
+
+% Selecting files!
+fn_out = '';
+for ii = l_Subj
+    for kk = 1:numel(ffilt.ImgMod)
+        switch ffilt.ImgMod{kk}
+            case 'bold'
+                % Use BIDS structure
+                tmp = fullfile(BIDS.subjects(ii).path, 'func', ...
+                    BIDS.subjects(ii).func.filename);
+            otherwise
+                warning('Unknown image type.')
+                tmp = [];
+        end
+        if ~isempty(tmp)
+            fn_out  = char(fn_out,tmp);
+        end
+    end
+end    
+% remove 1st line that is empty
+if size(fn_out,1)>1, fn_out(1,:) = []; end
+
+
+% Note:
+% selecting files or data (array/structure) should be places in separate
+% subfunctions to clarify the code
+% -> do that when dealing with data stuff
 
 %% #. Preparing the output
 % Number of filenames returned
@@ -77,3 +160,113 @@ if nargout==2
 end
 
 end
+
+% ________________________________________________________________________
+%
+%% SUBFUNCTIONS
+% ________________________________________________________________________
+
+function [pTyp,pInd] = extract_particpant_label_ind(pLabel)
+% Function to extract/decompose the participants' label (pLabel, char)
+% into a 'type' (pTyp, char) and 'index' (pInd, integer).
+%
+% Principle:
+% We assume that the index is placed at the end of the subject's label,
+% i.e.the last continuous set of numbers (0 to 9) will converted as the
+% subject's index (-> pInd), the 1st part will be its type (-> pTyp).
+% The notion of last numbers is useful to handle the case where a number is
+% used in the subject's label itself, e.g. the case of a disease stage.
+% Afterwards, the list of indexes is checked. If a few are exactly the
+% same (for the same pTyp!), then these are not representing a numeral
+% index, e.g. the labels end with a number like a few subjects in 'Stage3'/
+% 'Stage2'. So the indexes are removed (pInd = []) and the char labels
+% (pTyp) are returned.
+%
+% INPUT
+% pLabel : single subject label (char), char array or cell array of char
+%
+% OUPUT
+% pTyp : cell array with the char part of the pLabel, i.e. subject's type
+% pInd : array with the index part of the pLabel
+%
+% For example:
+%   sub-ctrl012 -> label = 'ctrl012' -> pTyp = 'ctrl' and pInd = 12
+%   it would return arrays in case of an array of labels.
+
+% Turn into cell array of char
+if ischar(pLabel), pLabel = cellstr(pLabel); end
+nrLabel = numel(pLabel);
+
+pTyp = cell(nrLabel,1);
+pInd = zeros(nrLabel,1);
+
+% All pLabel should start with 'sub-'
+lCheck = cell2mat(strfind(pLabel,'sub-'));
+if nrLabel~=numel(lCheck) || ~all(lCheck==1)
+    error('Subject/participants label not fitting BIDS specs.')
+end
+
+% Extract pInd and pTyp values
+for ii=1:nrLabel
+    % split the label one at a time.
+    tmp = pLabel{ii};
+    lab_ii = tmp(5:end);
+    l_numbers = regexp(lab_ii,'[0123456789]');
+    if isempty(l_numbers) || l_numbers(end)~=numel(lab_ii)
+        % no numbers or no numbers in last position -> pInd =  0;
+        pInd(ii) = NaN;
+        pTyp{ii} = lab_ii;
+    else
+        % Find last set of continuous numbers
+        dl_numbers = diff(l_numbers);
+        jj = 1; % we know we end with at least 1 number
+        while ~isempty(dl_numbers) && dl_numbers(end)==1
+            jj=jj+1; dl_numbers(end)=[];
+        end
+        % -> subject index (pInd) and the rest goes into pTyp
+        pInd(ii) = str2double(lab_ii(end-jj+1:end));
+        if jj<numel(lab_ii)
+            pTyp{ii} = lab_ii(1:end-jj);
+        else
+            pTyp{ii} = '';
+        end
+    end
+end
+% All pInd should now be either a number or NaN.
+
+% Check pInd's values, numbers or NaN's, according to pTyp
+u_pTyp = unique(pTyp);
+nu_pTyp = numel(u_pTyp);
+ok_ind = zeros(nu_pTyp,1);
+for ii=1:numel(u_pTyp)
+    % l_ii = find(strcmp(u_pTyp{ii},pTyp));
+    % ok_ind = check_indexes(pInd(l_ii));
+    ok_ind = check_indexes(pInd(strcmp(u_pTyp{ii},pTyp)));
+end
+
+if ~ok_ind
+    warning('Inconsistent numbering of participants'' label.');
+end
+
+end
+
+%%
+
+function ok_ind = check_indexes(pInd)
+% Function to check that all the pInd are different or NaN.
+
+if all(isnan(pInd))
+    % if all NaN no check needed.
+    ok_ind = true;
+else
+    if numel(pInd)~=numel(unique(pInd)) || any(isnan(pInd))
+        % if not all unique or some NaN -> not OK
+        ok_ind = false;
+    else
+        ok_ind = true;
+    end
+end
+
+end
+
+
