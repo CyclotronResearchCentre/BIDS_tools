@@ -1,14 +1,14 @@
-function [fn_out,nr_out] = crc_BIDS_select(ffilt)
+function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % Function to select images/data from a BIDS dataset based on some filters.
 %
 % The filters are defined by the fields of the 'ffilt' structure:
 % FORMAT
-%   [fn_out,nr_out] = crc_BIDS_select(ffilt)
+%   [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % or
-%   st_out = crc_BIDS_select(ffilt)
+%   st_out = crc_BIDS_select(ffilt,BIDS_spm)
 %
 % INPUT
-% ffilt : filtering details, expressed as a structure
+% ffilt     : filtering details, expressed as a structure
 %     .rootDir:     root directory path of BIDS dataset [def. current dir]
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
@@ -20,6 +20,10 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt)
 %                   'results') [def. 'raw']
 %     .FnPrefx:     required prefix to filename [def. '']
 %     .RegExp:      regular expression for file selection [def. '']
+%     .ResetBIDS:   force the reload the BIDS structure [def. false]
+% BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function in
+%             recent SPM12 distribution) or path name to it (this overlaods
+%             the 'rootDir' in the ffilt input!!!)
 %
 % All key-names should follow BIDS nomenclature.
 %
@@ -38,6 +42,12 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt)
 % * SubjInd:
 %   - if omited or set to 'all' (or another char), then no filtering
 %   - if (array of) number(s), then keeping only those matching
+% * ResetBIDS:
+%   after the first call to crc_BIDS_select, the BIDS structure is saved
+%   as a persistent variable. In order to reset this structure, i.e. for
+%   the reload, then set this flag to 'true'. This would mainly be used if
+%   data have changed on disk (unlikely but...) or when accessing another
+%   BIDS data set during the same Matlab session (very possible).
 %
 %__________________________________________________________________________
 %
@@ -67,23 +77,36 @@ ffilt_def = struct( ...
     'DatMod', '', ...     % name of structured data field to return
     'ProcLec', 'raw', ... % origin of the data (raw, derivative or results)
     'FnPrefx', '', ...    % required prefix to filename
-    'RegExp', '' ...      % regular expression for file selection
+    'RegExp', '', ...     % regular expression for file selection
+    'ResetBIDS', false ...% force the reload the BIDS structure or not
     );
-
 % Filling in defaults
 ffilt = crc_check_flag(ffilt_def,ffilt);
 
-% Note:
-% spm_BIDS does check for the existence and validity of the BIDS-directory
-% provided, no need to redo this check here?
-
-% Loading in the whole BIDS stucture for the 1st call
-if isempty(BIDS)
-    BIDS = spm_BIDS(ffilt.rootDir);
+% Load the BIDS structure
+if ffilt.ResetBIDS, BIDS = []; end % Reset the BIDS-structure
+if nargin<2
+    % Loading in the whole BIDS stucture for the 1st call
+    if isempty(BIDS)
+        BIDS = spm_BIDS(ffilt.rootDir);
+    end
+else
+    if isstruct(BIDS_spm)
+        BIDS = BIDS_spm;
+    elseif ischar(BIDS_spm)
+        ffilt.rootDir = BIDS_spm;
+        if isempty(BIDS)
+            BIDS = spm_BIDS(ffilt.rootDir);
+        end
+    end
 end
 
+% Note:
+% spm_BIDS does check for the existence and validity of the BIDS-directory
+% provided, no need to redo this check here then?
+
 %% #. Extracting the requested filenames/data
-fn_out = '';
+fn_out = ''; %#ok<*NASGU>
 nrSubj = numel(BIDS.subjects);
 
 % Check number of subject's dirs match participants info
@@ -149,7 +172,7 @@ if size(fn_out,1)>1, fn_out(1,:) = []; end
 
 
 % Note:
-% selecting files or data (array/structure) should be places in separate
+% selecting files or data (array/structure) should be placed in separate
 % subfunctions to clarify the code
 % -> do that when dealing with data stuff
 
