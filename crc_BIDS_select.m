@@ -16,7 +16,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .TaskLab:     label of task to consider [def. '']
 %     .ImgMod:      name of imaging modality [def. 'bold']
 %     .DatMod:      name of structured data field to return [def. 'events']
-%     .ProcLec:     level of the data processing ('raw', 'derivative' or
+%     .ProcLev:     level of the data processing ('raw', 'derivative' or
 %                   'results') [def. 'raw']
 %     .FnPrefx:     required prefix to filename [def. '']
 %     .RegExp:      regular expression for file selection [def. '']
@@ -75,7 +75,7 @@ ffilt_def = struct( ...
     'TaskLab', '', ...    % label of task to consider
     'ImgMod', {{'bold'}}, ... % imaging modality
     'DatMod', '', ...     % name of structured data field to return
-    'ProcLec', 'raw', ... % origin of the data (raw, derivative or results)
+    'ProcLev', 'raw', ... % origin of the data (raw, derivative or results)
     'FnPrefx', '', ...    % required prefix to filename
     'RegExp', '', ...     % regular expression for file selection
     'ResetBIDS', false ...% force the reload the BIDS structure or not
@@ -105,19 +105,19 @@ end
 % spm_BIDS does check for the existence and validity of the BIDS-directory
 % provided, no need to redo this check here then?
 
-%% #. Extracting the requested filenames/data
-fn_out = ''; %#ok<*NASGU>
-nrSubj = numel(BIDS.subjects);
-
 % Check number of subject's dirs match participants info
 if nrSubj~=numel(BIDS.participants.participant_id)
     error('Inconsistent number of subjects in BIDS directory.');
 end
 
-% Extracting the subjects' type and index from the original their label
-[pTyp,pInd] = extract_particpant_label_ind(BIDS.participants.participant_id);
+%% Extracting the requested filenames/data
+fn_out = ''; %#ok<*NASGU>
+nrSubj = numel(BIDS.subjects);
 
-% Find the list of subjects based on SubjType and SubjInd
+% Extracting the subjects' type and index from the original their label
+[pTyp,pInd] = extract_participant_label_ind(BIDS.participants.participant_id);
+
+% Find the list of subjects based on SubjType and SubjInd filter
 l_Subj = 1:nrSubj;
 if ~isempty(ffilt.SubjType)
     if isempty(ffilt.SubjType) || strcmp(ffilt.SubjType,'all') || ...
@@ -155,9 +155,17 @@ for ii = l_Subj
     for kk = 1:numel(ffilt.ImgMod)
         switch ffilt.ImgMod{kk}
             case 'bold'
-                % Use BIDS structure
-                tmp = fullfile(BIDS.subjects(ii).path, 'func', ...
-                    BIDS.subjects(ii).func.filename);
+                % Use BIDS structure & filter on 'TaskLab'
+                ffilt_func = struct(...
+                    'TaskLab',ffilt.TaskLab );
+                tmp = get_bold_data(BIDS.subjects(ii).func,ffilt_func);
+% NOTE:
+% this needs to be extended in order to account for other filtering option
+% such as 'AcqLab', 'RunLab' and 'RecLab', the acquisition, reconstruction 
+% and run flags.
+
+%                 tmp = fullfile(BIDS.subjects(ii).path, 'func', ...
+%                     BIDS.subjects(ii).func.filename);
             otherwise
                 warning('Unknown image type.')
                 tmp = [];
@@ -166,9 +174,8 @@ for ii = l_Subj
             fn_out  = char(fn_out,tmp);
         end
     end
-end    
-% remove 1st line that is empty
-if size(fn_out,1)>1, fn_out(1,:) = []; end
+end
+
 
 
 % Note:
@@ -177,6 +184,9 @@ if size(fn_out,1)>1, fn_out(1,:) = []; end
 % -> do that when dealing with data stuff
 
 %% #. Preparing the output
+% remove 1st line that is empty
+if size(fn_out,1)>1, fn_out(1,:) = []; end
+
 % Number of filenames returned
 if nargout==2
     nr_out = size(fn_out,1);
@@ -189,7 +199,7 @@ end
 %% SUBFUNCTIONS
 % ________________________________________________________________________
 
-function [pTyp,pInd] = extract_particpant_label_ind(pLabel)
+function [pTyp,pInd] = extract_participant_label_ind(pLabel)
 % Function to extract/decompose the participants' label (pLabel, char)
 % into a 'type' (pTyp, char) and 'index' (pInd, integer).
 %
@@ -292,4 +302,27 @@ end
 
 end
 
+%%
 
+function fn = get_bold_data(func_str,ffilt_func)
+% Function to extract the list of functional data based on ffilt_func
+% 
+% INPUT
+% - func_str    : structure array with the bold data
+% - ffilt_func  : filtering structure for the functional data
+%   .TaskLab    : task label filter
+%
+% NOTE:
+% this needs to be extended in order to account for other filtering option
+% such as 'AcqLab', 'RunLab' and 'RecLab', the acquisition, reconstruction 
+% and run flags.
+% -> add other fields in ffilt_func
+
+lTasks = char(func_str.task);
+lAcq = char(func_str.acq);
+lRec = char(func_str.rec);
+lRun = char(func_str.run);
+
+end
+
+% Add function to split runs according to numbers!
