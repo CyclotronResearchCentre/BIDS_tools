@@ -9,21 +9,25 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %
 % INPUT
 % - ffilt     : filtering details, expressed as a structure
+% #subjects
 %     .rootDir:     root directory path of BIDS dataset [def. current dir]
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
+% #images, sessions & runs
 %     .SessInd:     index/name of session to consider [def. '']
-%     .RunInd:      index of runs to consider (for BOLD or?) [def. []=all]
+%     .RunInd:      index of runs to consider [def. []=all]
 %     .TaskLab:     label of task to consider [def. '']
-%     .ImgMod:      name of imaging modality [def. 'bold']
+%     .ImgMod:      name of imaging modality [def. 'func']
+%     .ImgType:     image type for structural [def. ''=all]
+% #others
 %     .DatMod:      name of structured data field to return [def. 'events']
 %     .ProcLev:     level of the data processing ('raw', 'derivative' or
 %                   'results') [def. 'raw']
 %     .FnPrefx:     required prefix to filename [def. '']
 %     .RegExp:      regular expression for file selection [def. '']
 %     .ResetBIDS:   force the reload the BIDS structure [def. false]
-% - BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function 
-%               in recent SPM12 distribution) or path name to it (this 
+% - BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function
+%               in recent SPM12 distribution) or path name to it (this
 %               overloads the 'rootDir' in the ffilt input!!!)
 %
 % OUTPUT
@@ -33,7 +37,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % st_out : (array of) structure(s) with requested data
 %
 % PRINCIPLES
-% The BIDS data set (BIDS-ds) is 1st parsed with spm_BIDS, which returns a 
+% The BIDS data set (BIDS-ds) is 1st parsed with spm_BIDS, which returns a
 % Matlab structure containing all the necessary information. Since this is
 % slighlty time consuming, the 1st time you access a BIDS-ds, this
 % BIDS-structure is saved (as a permanent variable) to be re-used at the
@@ -43,7 +47,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %
 % NOTES
 % All key-names should follow BIDS nomenclature, otherwise the returned
-% output will not be correct or complete. 
+% output will not be correct or complete.
 % Regarding the filtering options
 % * SubjType:
 %   - if omited, then all types are considered
@@ -59,6 +63,8 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %   the reload, then set this flag to 'true'. This would mainly be used if
 %   data have changed on disk (unlikely but...) or when accessing another
 %   BIDS data set during the same Matlab session (very possible).
+% * Possible modality types are:
+%   'anat', 'func' (to be added 'fmap', 'beh', 'dwi' and 'meg')
 %
 % EXAMPLES:
 % Use the cloned example data sets from
@@ -69,17 +75,19 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %   The brain imaging data structure, a format for organizing and
 %   describing outputs of neuroimaging experiments.
 %   K. J. Gorgolewski et al, Scientific Data, 2016.
+%
+% TO-DO list
+% ==========
+% - Add the other "modalities", e.g. 'fmap', 'beh', 'dwi' and 'meg'
+% - Extend functional & anatomical selection in order to account for other 
+%   filtering option such as 'AcqLab and 'RecLab', the acquisition and 
+%   reconstruction label(s). -> add other fields in ffilt_func
+% - ...
 %_______________________________________________________________________
 % Copyright (C) 2017 Cyclotron Research Centre
 
 % Written by C. Phillips.
 % Cyclotron Research Centre, University of Liege, Belgium
-
-% TO-DO list
-% ==========
-% - Extended BOLD selection in order to account for other filtering option
-%   such as 'AcqLab and 'RecLab', the acquisition and reconstruction 
-%   label(s). -> add other fields in ffilt_func
 
 
 %% 1. Initializing and some checks
@@ -93,9 +101,10 @@ ffilt_def = struct( ...
     'SubjType', {{''}}, ...   % type of subject to consider
     'SubjInd', 'all', ... % index of subjects to consider
     'SessInd', '', ...    % index of session to consider
-    'RunInd', [], ...     % index of runs to consider (BOLD or?)
+    'RunInd', [], ...     % index of runs to consider
     'TaskLab', '', ...    % label of task to consider
-    'ImgMod', {{'bold'}}, ... % imaging modality
+    'ImgMod', {{'func'}}, ... % imaging modality
+    'ImgType', '', ...    % image type for structural [def. ''=all]
     'DatMod', '', ...     % name of structured data field to return
     'ProcLev', 'raw', ... % origin of the data (raw, derivative or results)
     'FnPrefx', '', ...    % required prefix to filename
@@ -177,11 +186,19 @@ fn_out = '';
 for ii = l_Subj
     for kk = 1:numel(ffilt.ImgMod)
         switch ffilt.ImgMod{kk}
-            case 'bold'
+            case 'anat'
+                % Use BIDS structure & filter on ''
+                ffilt_anat = struct(...
+                    'ImgType', {ffilt.ImgType},...
+                    'RunInd', ffilt.RunInd);
+                tmp = get_anat_data(BIDS.subjects(ii).anat,ffilt_anat);
+                % add other fields ('AcqLab and 'RecLab) in ffilt_func
+            case 'func'
                 % Use BIDS structure & filter on 'TaskLab' & 'RunInd'
                 ffilt_func = struct(...
                     'TaskLab', {ffilt.TaskLab},...
                     'RunInd', ffilt.RunInd);
+                tmp = get_bold_data(BIDS.subjects(ii).func,ffilt_func);
                 % add other fields ('AcqLab and 'RecLab) in ffilt_func
             otherwise
                 warning('Unknown image type.')
@@ -325,12 +342,12 @@ end
 
 function fn = get_bold_data(func_str,ffilt_func)
 % Function to extract the list of functional data based on ffilt_func
-% 
+%
 % INPUT
-% - func_str    : structure array with the bold data
+% - func_str    : structure array with the functional data
 % - ffilt_func  : filtering structure for the functional data
 %   .TaskLab    : task label filter
-%   .RunInd
+%   .RunInd     : run index(es)
 %
 % NOTE:
 % this needs to be extended in order to account for other filtering option
@@ -344,11 +361,11 @@ nmRec = char(func_str.rec);
 nmRun = char(func_str.run);
 nbRun = str2num(nmRun(:,5:end)); %#ok<*ST2NM>
 
-% List all data sets 
+% List all data sets
 nDataS = numel(func_str);
 lDataS = 1:nDataS;
 
-% Apply filters: 
+% Apply filters:
 % - TaskLab
 if ~isempty(ffilt_func.TaskLab)
     tmp = zeros(nDataS,1);
@@ -363,15 +380,65 @@ if ~isempty(ffilt_func.RunInd)
     tmp = false(numel(lDataS),1);
     for ii=1:numel(ffilt_func.RunInd)
         tmp(nbRun(lDataS)==ffilt_func.RunInd(ii)) = true;
-%         tmp = tmp + strcmp(ffilt_func.TaskLab{ii}, cellstr(nmTasks));
     end
     lDataS = lDataS(tmp);
 end
 
-    
-
 fn = char(func_str(lDataS).filename);
 
 end
+
+%%
+% ________________________________________________________________________
+
+function fn = get_anat_data(anat_str,ffilt_anat)
+% Function to extract the list of anatomical data based on ffilt_anat
+%
+% INPUT
+% - anat_str    : structure array with the anatomical data
+% - ffilt_anat  : filtering structure for the anatomical data
+%   .ImgType    : image type to filter
+%   .RunInd     : run index(es)
+%
+% NOTE:
+% this needs to be extended in order to account for other filtering option
+% such as 'AcqLab and 'RecLab', the acquisition and reconstruction labels.
+% -> add other fields in ffilt_anat
+
+% Get some names (nm) for Tasks, Acq, Rec, Run
+nmType = char(anat_str.type);
+nmAcq = char(anat_str.acq);
+nmRec = char(anat_str.rec);
+nmRun = char(anat_str.run);
+nbRun = str2num(nmRun(:,5:end)); %#ok<*ST2NM>
+
+% List all data sets
+nDataS = numel(anat_str);
+lDataS = 1:nDataS;
+
+% Apply filters:
+% - ImgType
+if ~isempty(ffilt_anat.ImgType)
+    tmp = zeros(nDataS,1);
+    for ii=1:numel(ffilt_anat.ImgType)
+        tmp = tmp + strcmp(ffilt_anat.ImgType{ii}, cellstr(nmType));
+    end
+    lDataS = lDataS(~~tmp);
+end
+
+% - RunInd
+if ~isempty(ffilt_anat.RunInd)
+    tmp = false(numel(lDataS),1);
+    for ii=1:numel(ffilt_anat.RunInd)
+        tmp(nbRun(lDataS)==ffilt_anat.RunInd(ii)) = true;
+    end
+    lDataS = lDataS(tmp);
+end
+
+fn = char(anat_str(lDataS).filename);
+
+end
+
+
 
 % Add function to split runs according to numbers!
