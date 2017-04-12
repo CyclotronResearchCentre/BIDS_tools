@@ -6,12 +6,17 @@
 % 
 % FILTER options
 % - ffilt     : filtering details, expressed as a structure
+% #subjects
 %     .rootDir:     root directory path of BIDS dataset [def. current dir]
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
+% #images, sessions & runs
 %     .SessInd:     index/name of session to consider [def. '']
+%     .RunInd:      index of runs to consider [def. []=all]
 %     .TaskLab:     label of task to consider [def. '']
-%     .ImgMod:      name of imaging modality [def. 'bold']
+%     .ImgMod:      name of imaging modality [def. 'func']
+%     .ImgType:     image type for structural [def. ''=all]
+% #others
 %     .DatMod:      name of structured data field to return [def. 'events']
 %     .ProcLev:     level of the data processing ('raw', 'derivative' or
 %                   'results') [def. 'raw']
@@ -37,42 +42,58 @@ end
 
 
 % Just pick one that works, e.g. 3rd directory
-% 2 bold sessions for 3 tasks.
+% 2 func sessions for 3 tasks.
 idat = 3;
 B = BIDSall{idat};
 
-% Get BOLD from all subject, all runs, for a single task
+% Get functional from all subject, all runs, for a single task
 ffilt = struct( ...
-    'ImgMod', {{'bold'}}, ...
+    'ImgMod', {{'func'}}, ...
     'TaskLab', {{'mixedeventrelatedprobe'}} );
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
-% Get BOLD from all subject, all runs, for 2 tasks
+% Get functional from all subject, all runs, for 2 tasks
 ffilt = struct( ...
-    'ImgMod', {{'bold'}}, ...
+    'ImgMod', {{'func'}}, ...
     'TaskLab', {{'mixedeventrelatedprobe','probabilisticclassification'}} );
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
-% Get BOLD from all subject, for 1 task and 2nd run
+% Get functional from all subject, for 1 task and 2nd run
 ffilt = struct( ...
-    'ImgMod', {{'bold'}}, ...
+    'ImgMod', {{'func'}}, ...
     'TaskLab', {{'deterministicclassification'}}, ...
     'RunInd', 2);
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
-% Get BOLD from all subject, for 2 tasks and 1st run
+% Get functional from all subject, for 2 tasks and 1st run
 ffilt = struct( ...
-    'ImgMod', {{'bold'}}, ...
+    'ImgMod', {{'func'}}, ...
     'TaskLab', {{'mixedeventrelatedprobe','probabilisticclassification'}}, ...
     'RunInd', 1);
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
-% Get BOLD from subject #4 & #6, for all tasks and 1st run
+% Get functional from subject #4 & #6, for all tasks and 1st run
 ffilt = struct( ...
-    'ImgMod', {{'bold'}}, ...
+    'ImgMod', {{'func'}}, ...
     'SubjInd', [4 6], ...
     'TaskLab', '', ...
     'RunInd', 1);
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
+% Get anatomical from all subject, all types
+ffilt = struct( ...
+    'ImgMod', {{'anat'}} );
+[fn_out,nr_out] = crc_BIDS_select(ffilt,B)
+
+% Get anatomical from all subject, only T1w
+ffilt = struct( ...
+    'ImgMod', {{'anat'}} , ...
+    'ImgType', {{'T1w'}} );
+[fn_out,nr_out] = crc_BIDS_select(ffilt,B)
+
+% Get anatomical from all subject, both T1w & inplaneT2
+ffilt = struct( ...
+    'ImgMod', {{'anat'}} , ...
+    'ImgType', {{'T1w','inplaneT2'}} );
+[fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
