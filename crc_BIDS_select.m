@@ -23,9 +23,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .ResetBIDS:   force the reload the BIDS structure [def. false]
 % - BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function 
 %               in recent SPM12 distribution) or path name to it (this 
-%               overlaods the 'rootDir' in the ffilt input!!!)
-%
-% All key-names should follow BIDS nomenclature.
+%               overloads the 'rootDir' in the ffilt input!!!)
 %
 % OUTPUT
 % fn_out : char array with all the requested (full path) filenames
@@ -33,7 +31,19 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % or
 % st_out : (array of) structure(s) with requested data
 %
-% Notes regarding the filtering options
+% PRINCIPLES
+% The BIDS data set (BIDS-ds) is 1st parsed with spm_BIDS, which returns a 
+% Matlab structure containing all the necessary information. Since this is
+% slighlty time consuming, the 1st time you access a BIDS-ds, this
+% BIDS-structure is saved (as a permanent variable) to be re-used at the
+% next call. One can force the parsing of the BIDS-ds.
+% All filters are then applied and the list of files or directories is then
+% returned.
+%
+% NOTES
+% All key-names should follow BIDS nomenclature, otherwise the returned
+% output will not be correct or complete. 
+% Regarding the filtering options
 % * SubjType:
 %   - if omited, then all types are considered
 %   - if only one type, pass it as a char
@@ -51,6 +61,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %
 % EXAMPLES:
 % Use the cloned example data sets from
+%   https://github.com/INCF/BIDS-examples
 %__________________________________________________________________________
 %
 % BIDS (Brain Imaging Data Structure): http://bids.neuroimaging.io/
@@ -108,16 +119,17 @@ end
 % provided, no need to redo this check here then?
 
 % Check number of subject's dirs match participants info
+nrSubj = numel(BIDS.subjects);
 if nrSubj~=numel(BIDS.participants.participant_id)
     error('Inconsistent number of subjects in BIDS directory.');
 end
 
 %% Extracting the requested filenames/data
 fn_out = ''; %#ok<*NASGU>
-nrSubj = numel(BIDS.subjects);
 
 % Extracting the subjects' type and index from the original their label
-[pTyp,pInd] = extract_participant_label_ind(BIDS.participants.participant_id);
+[pTyp,pInd] = extract_participant_label_ind( ...
+    BIDS.participants.participant_id);
 
 % Find the list of subjects based on SubjType and SubjInd filter
 l_Subj = 1:nrSubj;
@@ -159,7 +171,7 @@ for ii = l_Subj
             case 'bold'
                 % Use BIDS structure & filter on 'TaskLab'
                 ffilt_func = struct(...
-                    'TaskLab',ffilt.TaskLab );
+                    'TaskLab',{ffilt.TaskLab} );
                 tmp = get_bold_data(BIDS.subjects(ii).func,ffilt_func);
 % NOTE:
 % this needs to be extended in order to account for other filtering option
@@ -286,6 +298,7 @@ end
 end
 
 %%
+% ________________________________________________________________________
 
 function ok_ind = check_indexes(pInd)
 % Function to check that all the pInd are different or NaN.
@@ -305,6 +318,7 @@ end
 end
 
 %%
+% ________________________________________________________________________
 
 function fn = get_bold_data(func_str,ffilt_func)
 % Function to extract the list of functional data based on ffilt_func
@@ -317,13 +331,32 @@ function fn = get_bold_data(func_str,ffilt_func)
 % NOTE:
 % this needs to be extended in order to account for other filtering option
 % such as 'AcqLab', 'RunLab' and 'RecLab', the acquisition, reconstruction 
-% and run flags.
+% and run labels.
 % -> add other fields in ffilt_func
 
-lTasks = char(func_str.task);
-lAcq = char(func_str.acq);
-lRec = char(func_str.rec);
-lRun = char(func_str.run);
+% Get some names (nm) for Tasks, Acq, Rec, Run
+nmTasks = char(func_str.task);
+nmAcq = char(func_str.acq);
+nmRec = char(func_str.rec);
+nmRun = char(func_str.run);
+nbRun = str2num(nmRun(:,5:end)); %#ok<*ST2NM>
+
+% List all data sets 
+nDataS = numel(func_str);
+lDataS = 1:nDataS;
+
+% Apply filters: 
+% - TaskLab
+if ~isempty(ffilt_func.TaskLab)
+    tmp = zeros(nDataS,1);
+    for ii=1:numel(ffilt_func.TaskLab)
+        tmp = tmp + strcmp(ffilt_func.TaskLab{ii}, cellstr(nmTasks));
+    end
+    lDataS = lDataS(~~tmp);
+end
+    
+
+fn = char(func_str(lDataS).filename);
 
 end
 
