@@ -8,7 +8,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %   st_out = crc_BIDS_select(ffilt,BIDS_spm)
 %
 % INPUT
-% ffilt     : filtering details, expressed as a structure
+% - ffilt     : filtering details, expressed as a structure
 %     .rootDir:     root directory path of BIDS dataset [def. current dir]
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
@@ -21,9 +21,9 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .FnPrefx:     required prefix to filename [def. '']
 %     .RegExp:      regular expression for file selection [def. '']
 %     .ResetBIDS:   force the reload the BIDS structure [def. false]
-% BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function in
-%             recent SPM12 distribution) or path name to it (this overlaods
-%             the 'rootDir' in the ffilt input!!!)
+% - BIDS_spm  : a BIDS-structure as extracted with spm_BIDS (see function 
+%               in recent SPM12 distribution) or path name to it (this 
+%               overlaods the 'rootDir' in the ffilt input!!!)
 %
 % All key-names should follow BIDS nomenclature.
 %
@@ -33,7 +33,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % or
 % st_out : (array of) structure(s) with requested data
 %
-% Notes regardign the filtering options
+% Notes regarding the filtering options
 % * SubjType:
 %   - if omited, then all types are considered
 %   - if only one type, pass it as a char
@@ -49,6 +49,8 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %   data have changed on disk (unlikely but...) or when accessing another
 %   BIDS data set during the same Matlab session (very possible).
 %
+% EXAMPLES:
+% Use the cloned example data sets from
 %__________________________________________________________________________
 %
 % BIDS (Brain Imaging Data Structure): http://bids.neuroimaging.io/
