@@ -13,6 +13,7 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
 %     .SessInd:     index/name of session to consider [def. '']
+%     .RunInd:      index of runs to consider (for BOLD or?) [def. []=all]
 %     .TaskLab:     label of task to consider [def. '']
 %     .ImgMod:      name of imaging modality [def. 'bold']
 %     .DatMod:      name of structured data field to return [def. 'events']
@@ -74,6 +75,13 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % Written by C. Phillips.
 % Cyclotron Research Centre, University of Liege, Belgium
 
+% TO-DO list
+% ==========
+% - Extended BOLD selection in order to account for other filtering option
+%   such as 'AcqLab and 'RecLab', the acquisition and reconstruction 
+%   label(s). -> add other fields in ffilt_func
+
+
 %% 1. Initializing and some checks
 % Ensures the BIDS complete structure is extracted only once
 persistent BIDS
@@ -85,6 +93,7 @@ ffilt_def = struct( ...
     'SubjType', {{''}}, ...   % type of subject to consider
     'SubjInd', 'all', ... % index of subjects to consider
     'SessInd', '', ...    % index of session to consider
+    'RunInd', [], ...     % index of runs to consider (BOLD or?)
     'TaskLab', '', ...    % label of task to consider
     'ImgMod', {{'bold'}}, ... % imaging modality
     'DatMod', '', ...     % name of structured data field to return
@@ -124,7 +133,7 @@ if nrSubj~=numel(BIDS.participants.participant_id)
     error('Inconsistent number of subjects in BIDS directory.');
 end
 
-%% Extracting the requested filenames/data
+%% 2. Extracting the requested filenames/data
 fn_out = ''; %#ok<*NASGU>
 
 % Extracting the subjects' type and index from the original their label
@@ -169,17 +178,11 @@ for ii = l_Subj
     for kk = 1:numel(ffilt.ImgMod)
         switch ffilt.ImgMod{kk}
             case 'bold'
-                % Use BIDS structure & filter on 'TaskLab'
+                % Use BIDS structure & filter on 'TaskLab' & 'RunInd'
                 ffilt_func = struct(...
-                    'TaskLab',{ffilt.TaskLab} );
-                tmp = get_bold_data(BIDS.subjects(ii).func,ffilt_func);
-% NOTE:
-% this needs to be extended in order to account for other filtering option
-% such as 'AcqLab', 'RunLab' and 'RecLab', the acquisition, reconstruction 
-% and run flags.
-
-%                 tmp = fullfile(BIDS.subjects(ii).path, 'func', ...
-%                     BIDS.subjects(ii).func.filename);
+                    'TaskLab', {ffilt.TaskLab},...
+                    'RunInd', ffilt.RunInd);
+                % add other fields ('AcqLab and 'RecLab) in ffilt_func
             otherwise
                 warning('Unknown image type.')
                 tmp = [];
@@ -197,7 +200,7 @@ end
 % subfunctions to clarify the code
 % -> do that when dealing with data stuff
 
-%% #. Preparing the output
+%% 3. Preparing the output
 % remove 1st line that is empty
 if size(fn_out,1)>1, fn_out(1,:) = []; end
 
@@ -327,11 +330,11 @@ function fn = get_bold_data(func_str,ffilt_func)
 % - func_str    : structure array with the bold data
 % - ffilt_func  : filtering structure for the functional data
 %   .TaskLab    : task label filter
+%   .RunInd
 %
 % NOTE:
 % this needs to be extended in order to account for other filtering option
-% such as 'AcqLab', 'RunLab' and 'RecLab', the acquisition, reconstruction 
-% and run labels.
+% such as 'AcqLab and 'RecLab', the acquisition and reconstruction labels.
 % -> add other fields in ffilt_func
 
 % Get some names (nm) for Tasks, Acq, Rec, Run
@@ -354,6 +357,17 @@ if ~isempty(ffilt_func.TaskLab)
     end
     lDataS = lDataS(~~tmp);
 end
+
+% - RunInd
+if ~isempty(ffilt_func.RunInd)
+    tmp = false(numel(lDataS),1);
+    for ii=1:numel(ffilt_func.RunInd)
+        tmp(nbRun(lDataS)==ffilt_func.RunInd(ii)) = true;
+%         tmp = tmp + strcmp(ffilt_func.TaskLab{ii}, cellstr(nmTasks));
+    end
+    lDataS = lDataS(tmp);
+end
+
     
 
 fn = char(func_str(lDataS).filename);
