@@ -11,9 +11,9 @@
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
 % #images, sessions & runs
-%     .SessInd:     index/name of session to consider [def. '']
+%     .SessInd:     index/name of session to consider [def. ''=all]
 %     .RunInd:      index of runs to consider [def. []=all]
-%     .TaskLab:     label of task to consider [def. '']
+%     .TaskLab:     label of task to consider [def. ''=all]
 %     .ImgMod:      name of imaging modality [def. 'func']
 %     .ImgType:     image type for structural [def. ''=all]
 % #others
@@ -34,6 +34,7 @@
 if ispc
     rDir = '';
 else
+    % Put here the data from the example repo on GItHub, cf. help.
     rDir = '/Users/cphillips/Dropbox/Work/3_data/BIDS-examples-master/';
 end
 
@@ -97,3 +98,12 @@ ffilt = struct( ...
     'ImgType', {{'T1w','inplaneT2'}} );
 [fn_out,nr_out] = crc_BIDS_select(ffilt,B)
 
+% Get event from subject #5, for 1 task and 2nd run
+ffilt = struct( ...
+    'ImgMod', {{'func'}}, ...
+    'SubjInd', [5 7], ...
+    'TaskLab', {{'deterministicclassification'}}, ...
+    'RunInd', 2, ...
+    'DatType', 'val', ...
+    'DatField', {{'events'}});
+[v_out,nr_out] = crc_BIDS_select(ffilt,B)

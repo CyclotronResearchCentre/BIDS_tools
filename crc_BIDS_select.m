@@ -13,6 +13,8 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .rootDir:     root directory path of BIDS dataset [def. current dir]
 %     .SubjType:    type of subject to consider [def. 'all']
 %     .SubjInd: 	index of subjects to consider or 'all' [def. 'all']
+%     .DatType:     type of data request: filename ('fn') or value 'val'
+%                   (can be structure too) [def. 'fn']
 % #images, sessions & runs
 %     .SessInd:     index/name of session to consider [def. '']
 %     .RunInd:      index of runs to consider [def. []=all]
@@ -20,7 +22,8 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %     .ImgMod:      name of imaging modality [def. 'func']
 %     .ImgType:     image type for structural [def. ''=all]
 % #others
-%     .DatMod:      name of structured data field to return [def. 'events']
+%     .DatField:    field name of (structured) data to return  
+%                   [def. {{'events'}}]
 %     .ProcLev:     level of the data processing ('raw', 'derivative' or
 %                   'results') [def. 'raw']
 %     .FnPrefx:     required prefix to filename [def. '']
@@ -65,6 +68,9 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 %   BIDS data set during the same Matlab session (very possible).
 % * Possible modality types are:
 %   'anat', 'func' (to be added 'fmap', 'beh', 'dwi' and 'meg')
+% * DatField (celle array):
+%   When multiple data fields are passed, then they correspond to 
+%   successive sub-structure fields.
 %
 % EXAMPLES:
 % Use the cloned example data sets from
@@ -79,8 +85,8 @@ function [fn_out,nr_out] = crc_BIDS_select(ffilt,BIDS_spm)
 % TO-DO list
 % ==========
 % - Add the other "modalities", e.g. 'fmap', 'beh', 'dwi' and 'meg'
-% - Extend functional & anatomical selection in order to account for other 
-%   filtering option such as 'AcqLab and 'RecLab', the acquisition and 
+% - Extend functional & anatomical selection in order to account for other
+%   filtering option such as 'AcqLab and 'RecLab', the acquisition and
 %   reconstruction label(s). -> add other fields in ffilt_func
 % - ...
 %_______________________________________________________________________
@@ -98,14 +104,15 @@ persistent BIDS
 if nargin<1, ffilt = struct; end
 ffilt_def = struct( ...
     'rootDir', pwd, ...   % root directory path of BIDS dataset
-    'SubjType', {{''}}, ...   % type of subject to consider
+    'SubjType',{{''}},... % type of subject to consider
     'SubjInd', 'all', ... % index of subjects to consider
+    'DatType', 'fn', ...  % type of data request: 'fn' or 'val'
     'SessInd', '', ...    % index of session to consider
     'RunInd', [], ...     % index of runs to consider
     'TaskLab', '', ...    % label of task to consider
-    'ImgMod', {{'func'}}, ... % imaging modality
+    'ImgMod',{{'func'}},...% imaging modality
     'ImgType', '', ...    % image type for structural [def. ''=all]
-    'DatMod', '', ...     % name of structured data field to return
+    'DatField', {{'events'}},...% field name of (structured) data to return
     'ProcLev', 'raw', ... % origin of the data (raw, derivative or results)
     'FnPrefx', '', ...    % required prefix to filename
     'RegExp', '', ...     % regular expression for file selection
@@ -142,8 +149,7 @@ if nrSubj~=numel(BIDS.participants.participant_id)
     error('Inconsistent number of subjects in BIDS directory.');
 end
 
-%% 2. Extracting the requested filenames/data
-fn_out = ''; %#ok<*NASGU>
+%% 2. Finding out which subjects to deal with
 
 % Extracting the subjects' type and index from the original their label
 [pTyp,pInd] = extract_participant_label_ind( ...
@@ -181,8 +187,16 @@ elseif ~any(isnan(pInd)) % no NaN's -> apply index filter
     l_Subj = l_Subj(to_keep);
 end
 
-% Selecting files!
-fn_out = '';
+%% 3. Extracting the requested filenames/data
+% % Prepare the output: filenames or data (structure)
+% if strcmp(ffilt.DatType, 'fn')
+%     fn_out = ''; %#ok<*NASGU>
+% else
+%     fn_out = [];
+% end
+
+
+% Selecting files or data!
 for ii = l_Subj
     for kk = 1:numel(ffilt.ImgMod)
         switch ffilt.ImgMod{kk}
@@ -190,40 +204,54 @@ for ii = l_Subj
                 % Use BIDS structure & filter on ''
                 ffilt_anat = struct(...
                     'ImgType', {ffilt.ImgType},...
-                    'RunInd', ffilt.RunInd);
+                    'RunInd', ffilt.RunInd, ...
+                    'DatType', ffilt.DatType, ...
+                    'DatField', {ffilt.DatField});
                 tmp = get_anat_data(BIDS.subjects(ii).anat,ffilt_anat);
                 % add other fields ('AcqLab and 'RecLab) in ffilt_func
             case 'func'
                 % Use BIDS structure & filter on 'TaskLab' & 'RunInd'
                 ffilt_func = struct(...
                     'TaskLab', {ffilt.TaskLab},...
-                    'RunInd', ffilt.RunInd);
-                tmp = get_bold_data(BIDS.subjects(ii).func,ffilt_func);
+                    'RunInd', ffilt.RunInd, ...
+                    'DatType', ffilt.DatType, ...
+                    'DatField', {ffilt.DatField});
+                tmp = get_func_data(BIDS.subjects(ii).func,ffilt_func);
                 % add other fields ('AcqLab and 'RecLab) in ffilt_func
             otherwise
                 warning('Unknown image type.')
                 tmp = [];
         end
         if ~isempty(tmp)
-            fn_out  = char(fn_out,tmp);
+            if exist('fn_out','var')
+                if strcmp(ffilt.DatType, 'fn')
+                    fn_out  = char(fn_out,tmp);
+                else
+                    fn_out(end+1) = tmp;
+                end
+            else
+                fn_out = tmp;
+            end
         end
     end
 end
-
-
 
 % Note:
 % selecting files or data (array/structure) should be placed in separate
 % subfunctions to clarify the code
 % -> do that when dealing with data stuff
 
-%% 3. Preparing the output
-% remove 1st line that is empty
-if size(fn_out,1)>1, fn_out(1,:) = []; end
+%% 4. Preparing the output
+% % remove 1st line that is empty
+% if size(fn_out,1)>1, fn_out(1,:) = []; end
 
 % Number of filenames returned
 if nargout==2
-    nr_out = size(fn_out,1);
+    if strcmp(ffilt.DatType, 'fn')
+        nr_out = size(fn_out,1);
+    else
+        nr_out = numel(fn_out);
+    end
 end
 
 end
@@ -340,7 +368,7 @@ end
 %%
 % ________________________________________________________________________
 
-function fn = get_bold_data(func_str,ffilt_func)
+function fn = get_func_data(func_str,ffilt_func)
 % Function to extract the list of functional data based on ffilt_func
 %
 % INPUT
@@ -348,6 +376,8 @@ function fn = get_bold_data(func_str,ffilt_func)
 % - ffilt_func  : filtering structure for the functional data
 %   .TaskLab    : task label filter
 %   .RunInd     : run index(es)
+%   .DatType    : data type request 'fn or 'val'.
+%   .DatField   : data field(s) 
 %
 % NOTE:
 % this needs to be extended in order to account for other filtering option
@@ -374,7 +404,6 @@ if ~isempty(ffilt_func.TaskLab)
     end
     lDataS = lDataS(~~tmp);
 end
-
 % - RunInd
 if ~isempty(ffilt_func.RunInd)
     tmp = false(numel(lDataS),1);
@@ -384,7 +413,16 @@ if ~isempty(ffilt_func.RunInd)
     lDataS = lDataS(tmp);
 end
 
-fn = char(func_str(lDataS).filename);
+if strcmp(ffilt_func.DatType, 'fn')
+    % pick filenames
+    fn = char(func_str(lDataS).filename);
+else
+    if ~isempty(ffilt_func.DatField)
+        fn = get_struct_value(func_str(lDataS),ffilt_func.DatField);
+    else
+        fn = [];
+    end
+end
 
 end
 
@@ -439,6 +477,22 @@ fn = char(anat_str(lDataS).filename);
 
 end
 
+%%
+% ________________________________________________________________________
 
+function val = get_struct_value(f_str,DatField)
 
-% Add function to split runs according to numbers!
+nStr = numel(f_str);
+nField = numel(DatField);
+
+if isfield(f_str(1),DatField{1})
+    for ii=1:nStr
+        if nField==1
+            val(ii) = f_str(ii).(DatField{1});
+        else
+            val(ii) = get_struct_value(f_str.(DatField{1}),DatField(2:end));
+        end
+    end
+end
+
+end
